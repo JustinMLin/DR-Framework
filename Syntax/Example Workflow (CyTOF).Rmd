@@ -1,0 +1,89 @@
+---
+title: "Example Workflow (CyTOF)"
+author: "Justin Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(MASS)
+library(dplyr)
+library(Rtsne)
+library(viridis)
+library(gridExtra)
+
+source("DR metrics.R")
+```
+
+```{r}
+data = read.delim("../Data/CyTOF and mammoth data sets/Exp1_NK_uns_CD4_inf.txt")
+data = data %>%
+  select(-c(1,2)) %>%
+  sample_n(5000) %>%
+  mutate_all(function(x) log(1+x))
+```
+
+```{r}
+pca = prcomp(data, center = TRUE, scale. = TRUE, rank. = 10)
+Z = pca$x
+
+n = dim(Z)[1]
+p = dim(Z)[2]
+r = 2
+
+Y = Z[,1:r]
+```
+
+```{r}
+perplexity = c(20, 50, seq(from = 100, to = 1600, by = 100))
+b = 20
+k = 50
+
+trusts = sheps = vector(length = length(perplexity)*b)
+trusts_noise = sheps_noise = vector(length = length(perplexity)*b)
+
+print("Starting loop!")
+
+count = 1
+for (i in 1:length(perplexity)) {
+  for (j in 1:b) {
+    X_tsne = Rtsne(Z, perplexity = perplexity[i])$Y
+    
+    sample_indices = sample(1:n, 200)
+    
+    trusts[count] = trustworthiness_full_approx(Y, X_tsne, k, sample_indices)
+    sheps[count] = dist_cor_full_approx(Y, X_tsne, sample_indices)
+    
+    trusts_noise[count] = trustworthiness_full_approx(Z, X_tsne, k, sample_indices)
+    sheps_noise[count] = dist_cor_full_approx(Z, X_tsne, sample_indices)
+    
+    print(paste0(count, "/", length(perplexity)*b, " loops complete!"))
+    
+    count = count + 1
+  }
+}
+```
+
+```{r}
+df = data.frame(perplexity = rep(perplexity, each = b),
+                trust = trusts,
+                shep = sheps,
+                trust_noise = trusts_noise,
+                shep_noise = sheps_noise)
+
+p1 = ggplot(df, aes(x = trust_noise, y = shep_noise, col = perplexity)) + 
+  geom_point(size = 2) + 
+  scale_color_viridis() + 
+  labs(x = "Trustworthiness", y = "Shepard Goodness", title = "Replicating Signal + Noise")
+
+p2 = ggplot(df, aes(x = trust, y = shep, col = perplexity)) + 
+  geom_point(size = 2) + 
+  scale_color_viridis() + 
+  labs(x = "Trustworthiness", y = "Shepard Goodness", title = "Replicating Signal")
+
+#save(Y, df, p1, p2, file = "../Output/Example Output (CyTOF).Rda")
+```
+
