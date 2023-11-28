@@ -32,14 +32,14 @@ Z = pca$x
 
 n = dim(Z)[1]
 p = dim(Z)[2]
-r = 2
+r = 3
 
-Y = Z[,1:r]
+Y = Z[,1:r] # signal given by first r principal components
 ```
 
 ```{r}
 perplexity = c(20, 50, seq(from = 100, to = 1600, by = 100))
-b = 20
+b = 20 # number of runs at each perplexity
 k = 50
 
 trusts = sheps = vector(length = length(perplexity)*b)
@@ -50,13 +50,15 @@ print("Starting loop!")
 count = 1
 for (i in 1:length(perplexity)) {
   for (j in 1:b) {
-    X_tsne = Rtsne(Z, perplexity = perplexity[i])$Y
+    X_tsne = Rtsne(Z, perplexity = perplexity[i])$Y # computer t-SNE output
     
-    sample_indices = sample(1:n, 200)
+    sample_indices = sample(1:n, 200) # downsampling to approximate trustworthiness and Shepard goodness
     
+    # compare output against underlying signal
     trusts[count] = trustworthiness_full_approx(Y, X_tsne, k, sample_indices)
     sheps[count] = dist_cor_full_approx(Y, X_tsne, sample_indices)
     
+    # compare output against original data
     trusts_noise[count] = trustworthiness_full_approx(Z, X_tsne, k, sample_indices)
     sheps_noise[count] = dist_cor_full_approx(Z, X_tsne, sample_indices)
     
