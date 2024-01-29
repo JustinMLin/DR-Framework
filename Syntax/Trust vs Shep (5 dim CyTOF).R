@@ -4,6 +4,7 @@ library(dplyr)
 library(Rtsne)
 library(viridis)
 library(gridExtra)
+library(EFAtools)
 
 # source("../../../Algorithms/DR metrics.R")
 source("Algorithms/DR metrics.R")
@@ -14,6 +15,15 @@ data = data %>%
   select(-c(1,2)) %>%
   sample_n(5000) %>%
   mutate_all(function(x) log(1+x))
+
+# par = PARALLEL(data)
+# data.frame(par$eigenvalues_PCA) %>%
+#   janitor::clean_names() %>%
+#   mutate(x = 1:length(real_eigenvalues)) %>%
+#   ggplot(aes(x=x, y=real_eigenvalues)) +
+#     geom_col() +
+#     labs(y="Eigenvalue", title="Scree Plot for CyTOF Dataset") +
+#     theme(axis.title.x=element_blank())
 
 ###
 
@@ -30,7 +40,7 @@ Y = Z[,(1:r)]
 
 ###
 
-perplexity = c(20, 50, seq(from = 100, to = 1600, by = 100))
+perplexity = seq(from=10, to=300, by=10)
 b = 20
 k = 50
 
@@ -77,5 +87,5 @@ p2 = ggplot(df, aes(x = trust_noise, y = shep_noise, col = perplexity)) +
   scale_color_viridis() + 
   labs(x = "Trustworthiness", y = "Shepard Goodness", title = "Replicating Signal + Noise")
 
-# save(Y, df, p1, p2, file = trust vs shep (more dim CyTOF).Rda")
-save(Y, df, p1, p2, file = "~/DR noise/Output/trust vs shep (more dim CyTOF).Rda")
+# save(Y, df, p1, p2, file = trust vs shep (5 dim CyTOF).Rda")
+save(Y, df, p1, p2, file = "~/DR noise/Output/trust vs shep (5 dim CyTOF).Rda")

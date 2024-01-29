@@ -4,7 +4,6 @@ library(dplyr)
 library(Rtsne)
 library(viridis)
 library(gridExtra)
-library(tsne)
 
 # source("../../../Algorithms/DR metrics.R")
 source("Algorithms/DR metrics.R")
@@ -14,7 +13,7 @@ data = read.delim("Data/molecules.txt")
 
 data = as.data.frame(t(data))
 data = data %>%
-  select(where(function(x) mean(x == 0) < 0.2)) %>%
+  dplyr::select(where(function(x) mean(x == 0) < 0.2)) %>%
   mutate_all(function(x) log(1+x))
 
 ###

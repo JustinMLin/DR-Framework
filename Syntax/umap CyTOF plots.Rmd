@@ -1,0 +1,45 @@
+---
+title: "Reduced CyTOF Plots"
+author: "Justin Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(gridExtra)
+library(viridis)
+
+load("trust vs shep (umap CyTOF).Rda")
+```
+
+```{r, echo=FALSE, fig.width=18, fig.height=6}
+grid.arrange(p2, p1, nrow = 1)
+```
+
+```{r, echo=FALSE, fig.width=18, fig.height=6}
+q1 = ggplot(df, aes(x = n_neighbors, y = trust, col = n_neighbors)) + 
+  geom_point(size = 2) +
+  scale_color_viridis() + 
+  labs(x = "n_neighbors", y = "Trustworthiness", title = "Replicating Signal")
+
+q2 = ggplot(df, aes(x = n_neighbors, y = trust_noise, col = n_neighbors)) + 
+  geom_point(size = 2) +
+  scale_color_viridis() + 
+  labs(x = "n_neighbors", y = "Trustworthiness", title = "Replicating Signal + Noise")
+
+q3 = ggplot(df, aes(x = n_neighbors, y = shep, col = n_neighbors)) + 
+  geom_point(size = 2) +
+  scale_color_viridis() + 
+  labs(x = "n_neighbors", y = "Shepard Goodness", title = "Replicating Signal")
+
+q4 = ggplot(df, aes(x = n_neighbors, y = shep_noise, col = n_neighbors)) + 
+  geom_point(size = 2) +
+  scale_color_viridis() + 
+  labs(x = "n_neighbors", y = "Shepard Goodness", title = "Replicating Signal + Noise")
+
+grid.arrange(q2, q1, nrow = 1)
+grid.arrange(q4, q3, nrow = 1)
+```
