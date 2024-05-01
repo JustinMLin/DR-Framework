@@ -1,0 +1,309 @@
+---
+title: "BPCells example"
+author: "Justin Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+library(readr)
+library(dbscan)
+library(irlba)
+
+load("../../../../../10x Data/BPCells/BPCells clean data.Rda")
+load("BPCells example.Rda")
+```
+
+```{r}
+total_var = sum(diag(t(data) %*% data))/nrow(data)
+gc()
+
+sum(pca$sdev^2)/total_var
+```
+
+```{r, fig.width=10, fig.height=4, echo=FALSE}
+test = sapply(pca$sdev[1:100]^2, function(x) min(x, 100))
+
+data.frame(x=1:100, sd=test) %>%
+  ggplot(aes(x=x, y=sd)) +
+  geom_col() + 
+  ylim(0,100) +
+  labs(title="Scree Plot for BPCells Dataset", x="", y="Eigenvalues")
+```
+
+
+```{r, fig.width=18, fig.height=6, echo=FALSE}
+p1 = ggplot(df, aes(x=n_neighbors, y=trust_noise)) +
+  geom_point(size = 2) +
+  geom_smooth(method="loess", se=FALSE, color="red") +
+  labs(title = "Replicating Signal + Noise", x = "n_neighbors", y = "Trustworthiness")
+
+p2 = ggplot(df, aes(x=n_neighbors, y=trust)) +
+  geom_point(size = 2) +
+  geom_smooth(method="loess", se=FALSE, color="red") +
+  labs(title = "Replicating Signal", x = "n_neighbors", y = "Trustworthiness")
+
+grid.arrange(p1, p2, nrow = 1)
+```
+
+
+```{r, fig.width=14, fig.height=5}
+s1 = data.frame(x=best_X[,1], y=best_X[,2]) %>%
+  ggplot(aes(x=x, y=y)) +
+  geom_point() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(x="", y="", title="Replicating Signal (n_neighbors = 70)")
+
+s2 = data.frame(x=best_X_noise[,1], y=best_X_noise[,2]) %>%
+  ggplot(aes(x=x, y=y)) +
+  geom_point() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(x="", y="", title="Replicating Signal + Noise (n_neighbors = 50)")
+
+grid.arrange(s2, s1, nrow=1)
+```
+
+
+```{r}
+pca = prcomp_irlba(data, n=200)
+orig_cluster = kmeans(pca$x, centers = 12, nstart=100)
+```
+
+```{r}
+cell_cluster = case_when(
+  orig_cluster$cluster == 1 ~ "MONO",
+  orig_cluster$cluster == 2 ~ "T",
+  orig_cluster$cluster == 3 ~ "NK",
+  orig_cluster$cluster == 4 ~ "MONO",
+  orig_cluster$cluster == 5 ~ "MONO",
+  orig_cluster$cluster == 6 ~ "CD8 T",
+  orig_cluster$cluster == 7 ~ "MONO",
+  orig_cluster$cluster == 8 ~ "T",
+  orig_cluster$cluster == 9 ~ "B",
+  orig_cluster$cluster == 10 ~ "DC",
+  orig_cluster$cluster == 11 ~ "T",
+  orig_cluster$cluster == 12 ~ "T",
+  .default = "Unknown"
+)
+```
+
+
+```{r, fig.width=14, fig.height=5}
+t1 = data.frame(x=best_X[,1], y=best_X[,2], col=orig_cluster$cluster) %>%
+  ggplot(aes(x=x, y=y, color=factor(col))) +
+  geom_point(show.legend=FALSE) +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(x="", y="", title="Replicating Signal (n_neighbors = 70)")
+
+t2 = data.frame(x=best_X_noise[,1], y=best_X_noise[,2], col=orig_cluster$cluster) %>%
+  ggplot(aes(x=x, y=y, color=factor(col))) +
+  geom_point(show.legend=FALSE) +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(x="", y="", title="Replicating Signal + Noise (n_neighbors = 50)")
+
+grid.arrange(t2, t1, nrow=1)
+```
+
+```{r, fig.width=14, fig.height=5}
+w1 = data.frame(x=best_X[,1], y=best_X[,2], col=cell_cluster) %>%
+  ggplot(aes(x=x, y=y, color=col)) +
+  geom_point() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  scale_color_brewer(palette="Dark2") +
+  labs(x="", y="", title="Replicating Signal (n_neighbors = 70)", color="Cell Type")
+
+w2 = data.frame(x=best_X_noise[,1], y=best_X_noise[,2], col=cell_cluster) %>%
+  ggplot(aes(x=x, y=y, color=col)) +
+  geom_point() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  scale_color_brewer(palette="Dark2") +
+  labs(x="", y="", title="Replicating Signal + Noise (n_neighbors = 50)", color="Cell Type")
+
+grid.arrange(w2, w1, nrow=1)
+```
+
+
+
+```{r, fig.width=12, fig.height=20, echo=FALSE}
+load("../../../../../10x Data/BPCells/BPCells marker genes.Rda")
+
+q1 = data.frame(x=best_X[,1], y=best_X[,2], color=marker_genes_vals[,'MS4A1']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="MS4A1")
+
+q2 = data.frame(x=best_X[,1], y=best_X[,2], color=marker_genes_vals[,'GNLY']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="GNLY")
+
+q3 = data.frame(x=best_X[,1], y=best_X[,2], color=marker_genes_vals[,'CD3E']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="CD3E")
+
+q4 = data.frame(x=best_X[,1], y=best_X[,2], color=marker_genes_vals[,'CD14']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="CD14")
+
+q5 = data.frame(x=best_X[,1], y=best_X[,2], color=marker_genes_vals[,'FCER1A']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="FCER1A")
+
+q6 = data.frame(x=best_X[,1], y=best_X[,2], color=marker_genes_vals[,'FCGR3A']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="FCGR3A")
+
+q7 = data.frame(x=best_X[,1], y=best_X[,2], color=marker_genes_vals[,'LYZ']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="LYZ")
+
+q8 = data.frame(x=best_X[,1], y=best_X[,2], color=marker_genes_vals[,'CD4']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="CD4")
+
+r1 = data.frame(x=best_X_noise[,1], y=best_X_noise[,2], color=marker_genes_vals[,'MS4A1']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="MS4A1")
+
+r2 = data.frame(x=best_X_noise[,1], y=best_X_noise[,2], color=marker_genes_vals[,'GNLY']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="GNLY")
+
+r3 = data.frame(x=best_X_noise[,1], y=best_X_noise[,2], color=marker_genes_vals[,'CD3E']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  labs(color="CD3E")
+
+r4 = data.frame(x=best_X_noise[,1], y=best_X_noise[,2], color=marker_genes_vals[,'CD14']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="CD14")
+
+r5 = data.frame(x=best_X_noise[,1], y=best_X_noise[,2], color=marker_genes_vals[,'FCER1A']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="FCER1A")
+
+r6 = data.frame(x=best_X_noise[,1], y=best_X_noise[,2], color=marker_genes_vals[,'FCGR3A']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="FCGR3A")
+
+r7 = data.frame(x=best_X_noise[,1], y=best_X_noise[,2], color=marker_genes_vals[,'LYZ']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="LYZ")
+
+r8 = data.frame(x=best_X_noise[,1], y=best_X_noise[,2], color=marker_genes_vals[,'CD4']) %>%
+  ggplot(aes(x=x, y=y, color=color)) +
+  geom_point(alpha=0.7) +
+  scale_color_gradient(low="#E6E6E6", high="#2C699C") +
+  theme_bw() +
+  xlim(-8, 12) +
+  ylim(-3, 4) +
+  labs(color="CD4")
+
+grid.arrange(r1, r2, r3, r4, r5, r6, r7, r8, nrow=4, top="Replicating Signal + Noise (n_neighbors = 50)")
+grid.arrange(q1, q2, q3, q4, q5, q6, q7, q8, nrow=4, top="Replicating Signal (n_neighbors = 70)")
+```
+
+
+```{r}
+library(umap)
+library(reticulate)
+use_python("/Users/justinlin/anaconda3/bin/python")
+py_config()
+py_available()
+```
+
+```{r}
+Z = unname(pca$x)
+
+trans_umap = umap(Z, method = "umap-learn", n_neighbors = 50, n_components = 2)
+X_umap = trans_umap$layout
+```
+
+```{r}
+data.frame(x=X_umap[,1], y=X_umap[,2]) %>%
+  ggplot(aes(x=x, y=y)) +
+  geom_point() +
+  labs(x="", y="", title="Replicating Signal (n_neighbors = 75)")
+```
+
+

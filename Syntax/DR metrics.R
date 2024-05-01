@@ -3,12 +3,14 @@ library(dbscan)
 ################################################################################
 ## Helper Functions
 
-# returns the k-nearest neighbors of pt in data
 get_nns = function(pt, data, k) {
   kNN(data, k, matrix(pt, nrow = 1))$id
 }
 
-# returns the rank of point j among pt's neighbors in data
+get_nns2 = function(id, data_dist, k) {
+  order(data_dist[id,])[1:k]
+}
+
 nn_rank = function(pt, j, data) {
   n = length(data[,1])
   rank = match(j, kNN(data, n-1, matrix(pt, nrow = 1))$id)
@@ -16,10 +18,16 @@ nn_rank = function(pt, j, data) {
   if (is.na(rank)) n else rank
 }
 
+nn_rank2 = function(id, j, data_dist) {
+  n = length(data_dist[,1])
+  rank = match(j, order(data_dist[id,]))
+  
+  if (is.na(rank)) n else rank
+}
+
 ################################################################################
 ## DR
 
-# computes trustworthiness using every point
 trustworthiness_full = function(Z, X, k) {
   num_pts = length(Z[,1])
   
@@ -38,7 +46,24 @@ trustworthiness_full = function(Z, X, k) {
   1 - 2/(num_pts *k*(2*num_pts  - 3*k - 1))*total
 }
 
-# approximates trustworthiness by downsampling to points with the given indices
+trustworthiness_full2 = function(Z_dist, X_dist, k) {
+  num_pts = length(Z_dist[,1])
+  
+  total = 0
+  for (i in 1:num_pts) {
+    high_dim_neighbors = get_nns2(i, Z_dist, k+1)[-1]
+    low_dim_neighbors = get_nns2(i, X_dist, k+1)[-1]
+    
+    U = setdiff(low_dim_neighbors, high_dim_neighbors)
+    
+    if (length(U) != 0) {
+      total = total + sum(sapply(U, function(j) nn_rank2(i, j, Z_dist) - 1 - k))
+    }
+  }
+  
+  1 - 2/(num_pts *k*(2*num_pts  - 3*k - 1))*total
+}
+
 trustworthiness_full_approx = function(Z, X, k, indices) {
   num_pts = length(Z[,1])
   b = length(indices)
@@ -58,7 +83,25 @@ trustworthiness_full_approx = function(Z, X, k, indices) {
   1 - 2/(b*k*(2*num_pts  - 3*k - 1))*total
 }
 
-# computes continuity using every point
+trustworthiness_full_approx2 = function(Z_dist, X_dist, k, indices) {
+  num_pts = length(Z_dist[,1])
+  b = length(indices)
+  
+  total = 0
+  for (i in indices) {
+    high_dim_neighbors = get_nns2(i, Z_dist, k+1)[-1]
+    low_dim_neighbors = get_nns2(i, X_dist, k+1)[-1]
+    
+    U = setdiff(low_dim_neighbors, high_dim_neighbors)
+    
+    if (length(U) != 0) {
+      total = total + sum(sapply(U, function(j) nn_rank2(i, j, Z_dist) - 1 - k))
+    }
+  }
+  
+  1 - 2/(b*k*(2*num_pts  - 3*k - 1))*total
+}
+  
 continuity_full = function(Z, X, k) {
   n = length(Z[,1])
   
@@ -77,7 +120,6 @@ continuity_full = function(Z, X, k) {
   1 - 2/(n*k*(2*n - 3*k - 1))*total
 }
 
-# computes local stress
 local_stress_full = function(Z, X, k) {
   n = length(Z[,1])
   
@@ -97,12 +139,10 @@ local_stress_full = function(Z, X, k) {
   total_stress/n
 }
 
-# computes Shepard goodness using every point
 dist_cor_full = function(Z, X) {
   cor(dist(Z), dist(X), method="spearman")
 }
 
-# approximates Shepard goodness by first downsampling
 dist_cor_full_approx = function(Z, X, indices) {
   cor(dist(Z[indices,]), dist(X[indices,]), method="spearman")
 }

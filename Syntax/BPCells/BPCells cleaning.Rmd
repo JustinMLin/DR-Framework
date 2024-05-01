@@ -1,0 +1,154 @@
+---
+title: "BPCells cleaning"
+author: "Justin Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(rhdf5)
+library(BPCells)
+library(ggplot2)
+library(stringr)
+```
+
+```{r}
+url_base <- "https://cf.10xgenomics.com/samples/cell-arc/2.0.0/pbmc_granulocyte_sorted_3k/"
+rna_raw_url <- paste0(url_base, "pbmc_granulocyte_sorted_3k_raw_feature_bc_matrix.h5")
+atac_raw_url <- paste0(url_base, "pbmc_granulocyte_sorted_3k_atac_fragments.tsv.gz")
+
+# Only download files if we haven't downloaded already
+if (!file.exists("pbmc_3k_10x.h5")) {
+  download.file(rna_raw_url, "pbmc_3k_10x.h5", mode="wb")
+}
+if (!file.exists("pbmc_3k_10x.fragments.tsv.gz")) {
+  download.file(atac_raw_url, "pbmc_3k_10x.fragments.tsv.gz", mode="wb")
+}
+```
+
+```{r}
+# Check if we already ran import
+if (!file.exists("pbmc_3k_rna_raw")) {
+  mat_raw <- open_matrix_10x_hdf5("pbmc_3k_10x.h5", feature_type="Gene Expression") %>% 
+    write_matrix_dir("pbmc_3k_rna_raw")
+} else {
+  mat_raw <- open_matrix_dir("pbmc_3k_rna_raw")
+}
+mat_raw
+```
+
+```{r}
+# Check if we already ran import
+if (!file.exists("pbmc_3k_frags")) {
+  frags_raw <- open_fragments_10x("pbmc_3k_10x.fragments.tsv.gz") %>%
+      write_fragments_dir("pbmc_3k_frags")
+} else {
+  frags_raw <- open_fragments_dir("pbmc_3k_frags")
+}
+frags_raw
+```
+
+```{r}
+reads_per_cell <- Matrix::colSums(mat_raw)
+plot_read_count_knee(reads_per_cell, cutoff = 1e3)
+```
+
+```{r}
+genes <- read_gencode_transcripts(
+  "./references", 
+  release="42", 
+  transcript_choice="MANE_Select",
+  annotation_set = "basic", 
+  features="transcript" # Make sure to set this so we don't get exons as well
+)
+head(genes)
+```
+
+```{r}
+blacklist <- read_encode_blacklist("./references", genome="hg38")
+head(blacklist)
+```
+
+```{r}
+chrom_sizes <- read_ucsc_chrom_sizes("./references", genome="hg38")
+head(chrom_sizes)
+```
+
+```{r}
+atac_qc <- qc_scATAC(frags_raw, genes, blacklist)
+head(atac_qc)
+```
+
+```{r}
+plot_tss_scatter(atac_qc, min_frags=1000, min_tss=10)
+```
+
+```{r}
+plot_fragment_length(frags_raw)
+plot_tss_profile(frags_raw, genes)
+```
+
+```{r}
+pass_atac <- atac_qc %>%
+    dplyr::filter(nFrags > 1000, TSSEnrichment > 10) %>%
+    dplyr::pull(cellName)
+pass_rna <- colnames(mat_raw)[Matrix::colSums(mat_raw) > 1e3]
+keeper_cells <- intersect(pass_atac, pass_rna)
+
+frags <- frags_raw %>% select_cells(keeper_cells)
+
+keeper_genes <- Matrix::rowSums(mat_raw) > 3
+mat <- mat_raw[keeper_genes,keeper_cells]
+```
+
+```{r}
+# Normalize by reads-per-cell
+mat <- multiply_cols(mat, 1/Matrix::colSums(mat))
+
+# Log normalization
+mat <- log1p(mat * 10000) # Log normalization
+```
+
+
+```{r}
+stats <- matrix_stats(mat, row_stats="variance")
+
+# To keep the example small, we'll do a very naive variable gene selection
+variable_genes <- order(stats$row_stats["variance",], decreasing=TRUE) %>% 
+  head(1000) %>% 
+  sort()
+
+mat_norm <- mat[variable_genes,]
+```
+
+```{r}
+gene_means <- stats$row_stats["mean",variable_genes]
+gene_vars <- stats$row_stats["variance", variable_genes]
+mat_norm <- (mat_norm - gene_means) / gene_vars
+```
+
+```{r}
+marker_genes = c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "CD4")
+
+marker_genes_id = vector(length = length(marker_genes))
+for (i in 1:length(marker_genes)) {
+  temp = genes$gene_id[which(genes$gene_name == marker_genes[i])]
+  marker_genes_id[i] = str_replace(temp, "(\\.[0-9]+)$", "")
+}
+
+marker_genes_cols = sapply(marker_genes_id, function(id) which(mat@dimnames[[1]] == id))
+
+marker_genes_vals = t(as.matrix(mat)[marker_genes_cols,])
+colnames(marker_genes_vals) = marker_genes
+
+save(marker_genes_vals, file="BPCells marker genes.Rda")
+```
+
+
+```{r}
+#save(mat_norm, file="BPCells matrix.Rda")
+```
+
